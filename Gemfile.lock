@@ -1,0 +1,45 @@
+PATH
+  remote: .
+  specs:
+    citysdk (1.0)
+      charlock_holmes (~> 0.6)
+      curses (~> 1.0)
+      dbf (~> 2.0)
+      faraday (~> 0.8)
+      georuby (~> 2.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    charlock_holmes (0.7.3)
+    curses (1.0.1)
+    dbf (2.0.7)
+      fastercsv (~> 1.5.4)
+    diff-lcs (1.2.5)
+    faraday (0.9.0)
+      multipart-post (>= 1.2, < 3)
+    fastercsv (1.5.5)
+    georuby (2.2.1)
+    multipart-post (2.0.0)
+    rspec (3.0.0)
+      rspec-core (~> 3.0.0)
+      rspec-expectations (~> 3.0.0)
+      rspec-mocks (~> 3.0.0)
+    rspec-core (3.0.2)
+      rspec-support (~> 3.0.0)
+    rspec-expectations (3.0.2)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.0.0)
+    rspec-mocks (3.0.2)
+      rspec-support (~> 3.0.0)
+    rspec-support (3.0.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  charlock_holmes
+  citysdk!
+  faraday
+  georuby
+  rspec (~> 3.0)

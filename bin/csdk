@@ -1,0 +1,1220 @@
+#!/usr/bin/env ruby
+
+lib = File.expand_path(File.dirname(__FILE__) + '/../lib')
+$LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
+
+require "yaml"
+
+# require 'citysdk'
+require_relative '../lib/citysdk.rb'
+include CitySDK
+require "curses"
+include Curses
+
+
+$categories = %w{ none geography natural cultural civic tourism mobility administrative environment health education security commercial }
+$outheight = 0
+$outwidth = 0
+
+############# convenience ####################################################
+
+
+
+class Array
+  def sharedStart
+    a = self.sort
+    w1 = a[0]
+    w2 = a[-1]
+    l = w1.length
+    i = 0
+    while(i < l and w1[i] == w2[i])
+      i += 1
+    end
+    w1[0...i]
+  end
+end
+
+############# menus ##########################################################
+
+class MenuItem
+  attr_accessor :t, :c, :k
+  def initialize(key,text,command,*args)
+    @k = key
+    @t = text
+    @c = command
+    @a = args.flatten
+  end
+  def call
+    (@a.length > 0) ? @c.call(@a) : @c.call
+  end
+end
+
+$currentMenu = nil
+
+class Menu
+  def initialize(items)
+    @items = items
+  end
+  
+  def replace(n,i)
+    @items[n]=i
+  end
+  
+  def run(outwinproc = nil)
+    $currentMenu = self
+    $vpos = 3
+    banner
+    @items.each do |i|
+      setpos($vpos,1)
+      addstr(" #{i.k}: #{i.t}") 
+      $vpos+=1
+    end
+    $vpos+=1
+    setpos($vpos,1)
+    addstr("please select")
+    setpos($vpos+1,0)
+    addstr("-" * Curses.cols)
+
+    $outwin.close if $outwin
+    $outheight = Curses.lines - $vpos - 3
+    $outwidth = Curses.cols
+    $outwin=Curses::Window.new( $outheight, $outwidth, $vpos+2, 1 )
+    $outwin.refresh
+    outwinproc.call if outwinproc
+
+    curs_set(0)
+    while true
+      noecho
+      c = getch
+      @items.each do |i|
+        if i.k == c
+          sherror('')
+          $outwin.clear
+          i.call 
+          setpos($vpos,1)
+          clrtoeol
+          addstr("please select")
+          refresh
+          break
+        end
+      end
+    end
+  end
+end
+
+
+############# layers #########################################################
+
+
+
+def layerSummary
+  layer = selectLayer("please select layer",false)
+  return unless layer
+  $outwin.clear
+  outAddstr 1,sprintf("%15s: #{layer[:name]}", 'name')
+  json = $api.get("/layers/#{layer[:name]}/objects?per_page=1&count")
+  outAddstr 2, sprintf("%15s: #{$api.last_result[:headers]['x-result-count']}", 'data frames')
+  outAddstr 3, sprintf("%15s: #{layer[:title]}", 'title')
+  outAddstr 4, sprintf("%15s: #{layer[:category]}/#{layer[:subcategory]}", 'category')
+  outAddstr 5, sprintf("%15s: #{layer[:description]}", 'description')
+  outAddstr 6, sprintf("%15s: #{layer[:licence]}", 'licence')
+  outAddstr 7, sprintf("%15s: #{layer[:rdf_type]}", 'type')
+  outAddstr 8, sprintf("%15s: #{layer[:fields].blank? ? 'none defined' : layer[:fields].map {|f| f[:name]}.join(', ')}", 'fields')
+end
+
+
+def createLayer
+  return unless $user
+  
+  userdomains = $user[:domains].split(",")
+  userdomains << 'test'
+  userdomains = userdomains.map{|d|d.strip}.uniq
+  layer = {}
+  
+  $outwin.clear
+  $outwin.setpos(1,0)
+  $outwin.addstr "create new layer:"
+  $outwin.refresh
+  
+  return cancelled unless get_input("name",:name,layer,3)
+  while true do
+    l = $layers.select { |i| (i[:name] == layer[:name]) }
+    break if l.blank?
+    $outwin.setpos(1,0)
+    $outwin.addstr "name needs to bve unique:"
+    $outwin.refresh
+    layer[:name] = ''
+    return cancelled unless get_input("name",:name,layer,3)
+  end
+  if !$user[:admin]
+    while true do
+      a = layer[:name].split(".")
+      break if a.length > 1 and userdomains.include?(a[0])
+      $outwin.setpos(1,0)
+      $outwin.addstr "name needs to start with one of #{userdomains}:"
+      $outwin.refresh
+      layer[:name] = ''
+      return cancelled unless get_input("name",:name,layer,3)
+    end
+  end
+  
+  return cancelled unless get_input("title",:title,layer,4)
+  return cancelled unless get_input("description",:description,layer,5)
+  return cancelled unless get_input("licence",:licence,layer,6)
+  return cancelled unless get_input("rdf_type",:rdf_type,layer,7)
+  ret = self.get_string_array("please enter data sources, empty line ends input.",8)
+  layer[:data_sources] = ret.blank? ? [""] : ret
+  
+  c = get_input_from_list("category:", $user[:admin] ? $categories: $categories[1..-1], 8)
+  layer[:category] = c if c.length
+  return cancelled unless get_input("subcategory",:subcategory,layer,9)
+
+  if $user[:admin]
+    c = get_input_from_list("owner", $users.map {|u| u[:name]} , 10)
+  else
+    c = $user[:name]
+  end
+  layer[:owner] = c
+
+  if $user[:admin]
+    return cancelled unless get_input("authoritative",:authoritative,layer,11)
+    layer[:authoritative] = isTrue?(layer[:authoritative])
+  end
+  
+  return cancelled unless get_input("webservice_url",:webservice_url,layer,11)
+  return cancelled unless get_input("update_rate",:update_rate,layer,12)
+
+  # '@context',   'fields'
+
+  $outwin.setpos(10,0)
+  $outwin.addstr JSON.pretty_generate(layer) + "\n\n"
+  $outwin.refresh
+
+  if yesNo?("is this correct? ")
+    apiCall('updating layer') do 
+      json = ''
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        begin
+          json = $api.post "/layers", layer
+          getLayersList
+          $layer = $layers.select { |i| (i[:name] == layer[:name]) }[0]
+        rescue => ex
+          json = ex.message
+        end
+        $api.release
+        outMessage("Layer created: '#{$layer[:name]}'..")
+        return $layer
+      end
+    end
+  end
+  nil
+end
+
+
+def selectLayer(prompt,owner=true)
+  while true
+    n = get_input_from_list(prompt, $layers.map {|u| u[:name]}, 1)
+    return nil if n.blank?
+    l = $layers.select { |i| (i[:name] == n) }
+    if l.blank?
+      outAddstr(3,"Non-existant layer: #{n}")
+    elsif owner and !owned?(l[0])
+      outAddstr(3,"Layer not owned by #{$user[:fullname]}; #{n}")
+    else
+      return l[0]
+    end
+  end
+end
+
+
+def layerAddFields
+  return unless $layer and owned?($layer)
+  $outwin.clear; v = 2
+  outAddstr 1, "current fields:"
+  
+  
+end
+
+def clearLayer 
+  layer = selectLayer("please select layer to empty",true)
+  return unless layer
+  $outwin.clear
+  if yesNo?("clear all objects from #{layer[:name]}; sure?", 1)
+    apiCall("deleting from layer #{layer[:name]}", "all #{layer[:name]} objects deleted") do 
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        $api.delete("/layers/#{layer[:name]}/objects")
+        $api.release
+        ''
+      end
+    end
+  end
+end
+
+def selectNewOrExistingLayer
+  $outwin.clear
+  $outwin.setpos(1,0)
+  $outwin.addstr "Set layer: make new or use existing layer? (n/e)"
+  $outwin.refresh
+  a = charIn(['n','N','e','E'])
+  return cancelled if a == 27
+  if a.downcase == 'n'
+    return createLayer
+  end 
+  return selectLayer("please select layer",true)
+end
+
+
+
+def doImport
+  
+  return unless $user
+  
+  if $file_hash[:layername].blank?
+    $file_hash[:layername] = $layer = selectNewOrExistingLayer 
+    return unless $layer
+  end
+
+  unless ($user[:admin] or $layer[:owner][:name] == $user[:name])
+    outMessage("User has no access to layer #{$layer[:name]}..")
+    return
+  end
+  
+  $file_hash[:batch_size] == 250 if $file_hash[:batch_size].blank?
+  get_input("Please select batch size for upload:", :batch_size, $file_hash, 1)
+  
+  if $file_hash[:hasgeometry].nil? and $file_hash[:postcode] and $file_hash[:housenumber]
+    outAddstr 1,"No geometry detected, but possibly address and postcode. "
+    outAddstr 2,"We can possibly link to postcode/housenumber combination."
+    addreslayer = get_input_from_list("Please select address layer (blank for cancel)", $layers.map {|u| u[:name]}, 3)
+    return cancelled if addreslayer.blank?
+    alayer = $layers.select {|u| addreslayer = u[:name]}
+    if alayer.blank?
+      outMessage("No such layer: #{addreslayer}..")
+      return
+    end
+    field = get_input_from_list("Please pc/hn field (postcode_huisnummer)", $layers.map {|u| u[:name]}, 2)
+  end
+  
+  if $file_hash[:hasgeometry]
+    n = $file_reader.content.length
+    i = 0
+    begin
+      $file_hash[:layername] = $layer[:name]
+      imp = Importer.new($file_hash, $file_reader)
+      imp.api.batch_size = $file_hash[:batch_size].to_i
+      n = imp.doImport do |d|
+        i += 1
+        outAddstr 1,"importing: #{Integer(100 * i / n)}%" if(i % 100)
+      end
+      outMessage("Import of #{$file_hash[:file_path]} succesful; processed #{n[:created]} items.")
+    rescue Exception => e
+      $file_hash[:layername] = nil
+      sherror(e.message)
+      return
+    end
+  end
+  
+  if $layer[:fields].blank? 
+    if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+      $file_hash[:fields].each do |f|
+        k = $file_hash[:alternate_fields][f]
+        field = {name: k.to_s}
+        $api.post("/layers/#{$layer[:name]}/fields", field)
+        $layer[:fields] << field
+      end
+      $api.release
+    end
+  end
+  
+end
+
+def owned?(layer)
+  return true if $user[:admin]
+  return ($user[:name] == layer[:owner][:name]) if layer.class == Hash
+  $layers.each do |l|
+    return true if l[:name]==layer and ($user[:name] == l[:owner][:name])
+  end
+  false
+end
+
+
+
+def editLayer
+  
+  l = selectLayer("layer to edit")
+  return if l.blank?
+  layer = l.deep_copy
+  
+  $outwin.clear
+  $outwin.setpos(1,0)
+  $outwin.addstr "edit layer #{layer[:name]}:"
+  $outwin.refresh
+  
+  return cancelled unless get_input("title",:title,layer,3)
+  return cancelled unless get_input("description",:description,layer,4)
+  return cancelled unless get_input("licence",:licence,layer,5)
+  return cancelled unless get_input("rdf_type",:rdf_type,layer,6)
+  ret = self.get_string_array("please enter data sources, empty line ends input.",7)
+  layer[:data_sources] = ret.blank? ? [""] : ret
+  
+  c = get_input_from_list("category (#{layer[:category]})", $user[:admin] ? $categories: $categories[1..-1], 7)
+  layer[:category] = c if c.length
+  return cancelled unless get_input("subcategory",:subcategory,layer,8)
+
+  if $user[:admin]
+    c = get_input_from_list("owner (#{layer[:owner][:name]})", $users.map {|u| u[:name]} , 9)
+    layer[:owner] = c if c.length
+  end
+
+  if $user[:admin]
+    return cancelled unless get_input("authoritative",:authoritative,layer,10)
+    layer[:authoritative] = isTrue?(layer[:authoritative])
+  end
+  
+  return cancelled unless get_input("webservice_url",:webservice_url,layer,11)
+  return cancelled unless get_input("update_rate",:update_rate,layer,12)
+
+  # '@context',   'fields'
+  
+  layer.delete_if{ |k, v| (v == l[k]) or v.blank? }
+  
+  if layer.empty?
+    $outwin.clear
+    $outwin.setpos(1,0)
+    $outwin.addstr "No change.."
+    $outwin.refresh
+  else
+  
+    $outwin.setpos(10,0)
+    $outwin.addstr JSON.pretty_generate(layer) + "\n\n"
+    $outwin.refresh
+
+    $outwin.setpos(11,0)
+    if yesNo?("is this correct? ")
+      apiCall('updating layer') do 
+        json = ''
+        if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+          begin
+            json = $api.patch "/layers/#{layer[:name]}", layer
+            getLayersList
+            json = $layers.select { |i| (i[:name] == layer[:name]) }[0]
+          rescue Exception => ex
+            json = ex.message
+          end
+          $api.release
+        end
+        json
+      end
+    end
+  end
+
+end
+
+
+def deleteLayer
+  return unless $user
+  layer = selectLayer("layer to delete")
+  return if layer.blank?
+
+  if yesNo?("Are you sure to delete layer #{layer[:name]}?",1)
+    apiCall('deleting layer',"Layer #{layer[:name]} is deleted.") do 
+      json = ''
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        json = $api.delete "/layers/#{layer[:name]}"
+        $api.release
+        getLayersList
+      end
+      json
+    end
+  end
+end
+
+
+def getLayersList
+  begin
+    $layers = $api.get('/layers?per_page=1000')
+    $layers = $layers[:features].map { |f| f[:properties]}
+  rescue Exception => e
+  end
+end
+
+def showLayers
+  i = 1
+  $layers.each do |u|
+    s =  sprintf("%-15s ",u[:name])
+    s += sprintf("#{u[:category]}/#{u[:subcategory]}, #{u[:owner][:fullname]}, #{u[:description]}")
+    $outwin.setpos(i,0)
+    $outwin.addstr s.remove_non_ascii
+    i += 1
+  end
+  $outwin.refresh
+end
+
+
+############# users ##########################################################
+
+def getUserList
+  $users = []
+  begin
+    $api.authenticate($credentials_hash[:login],$credentials_hash[:password]) if $user
+    $users = $api.get('/owners?per_page=1000')
+    $api.release if $user
+  rescue Exception => e
+    sherror("getUserList: " + e.message)
+  end
+end
+
+def showUsers
+  i = 2
+  $users.each do |u|
+    s =  u[:admin] ? 'a ' : '  '
+    s += sprintf("%-12s ",u[:name]) if $user[:admin]
+    s += sprintf("%-20s #{u[:email]}", u[:fullname])
+    s += " (#{u[:domains]})"
+    $outwin.setpos(i,0)
+    $outwin.addstr s.remove_non_ascii
+    i += 1
+  end
+  $outwin.refresh
+end
+
+
+
+def deleteUser(u)
+  return unless ($user and $user[:admin])
+  user = selectUser("user to delete")
+  return if user.nil?
+  if (u[:name] =~ /citysdk/i)
+    return sherror("User 'citysdk' cannot be deleted.")
+  end
+  if yesNo?("Are you sure; deleting user #{u[:name]}?",1)
+    apiCall('deleting user',"User #{u[:name]} is deleted.") do 
+      json = ''
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        json = $api.delete "/owners/#{u[:name]}"
+        $api.release
+        getUserList
+      end
+      json
+    end
+  end
+end
+
+
+def createUser
+  if $user and $user[:admin]
+    user = {}
+    $outwin.clear
+    $outwin.setpos(1,0)
+    $outwin.addstr "create new user:"
+    $outwin.refresh
+    user[:admin] = 'y/n'
+
+    return cancelled unless get_input("login name",:name,user,3)
+    return cancelled if user[:name].blank?
+    return cancelled unless get_input("full name",:fullname,user,4)
+    return cancelled unless get_input("email",:email,user,5)
+    return cancelled unless get_input("organization",:organization,user,6)
+    return cancelled unless get_input("website",:website,user,7)
+    return cancelled unless get_input("domains",:domains,user,8,'test, ')
+    return cancelled unless get_input("admin",:admin,user,9)
+    return cancelled unless get_input("password",:password,user,10)
+
+    user[:admin]   = isTrue?(user[:admin]) 
+    user[:domains] = user[:domains].split(",").map {|d| d.strip }.join(",")
+    
+    apiCall('add new user') do 
+      json = ''
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        begin
+          json = $api.post "/owners", user
+          getUserList
+        rescue => ex
+          json = ex.message
+        end
+        $api.release
+      end
+      json
+    end
+  end
+end
+
+
+def selectUser(prompt)
+  return $user unless $user[:admin]  
+  n = get_input_from_list(prompt, $users.map {|u| u[:name]}, 1)
+  l = $users.select { |i| (i[:name] == n) }
+  if l.blank?
+    sherror("Non-existant user: #{n}") 
+    return nil
+  end
+  l[0]
+end
+
+
+
+def editUser
+  return unless $user
+  u = selectUser("user to edit")
+  return if u.nil?
+  user = u.deep_copy
+  $outwin.clear
+  $outwin.setpos(1,0)
+  $outwin.addstr "edit user #{user[:name]}:"
+  $outwin.refresh
+  
+  vp = 3
+  
+  return cancelled unless get_input("full name",:fullname,user,vp+=1)
+  return cancelled unless get_input("email",:email,user,vp+=1)
+  return cancelled unless get_input("organization",:organization,user,vp+=1)
+  return cancelled unless get_input("website",:website,user,vp+=1)
+  return cancelled unless get_input("domains",:domains,user,vp+=1) if $user[:admin]
+  return cancelled unless get_input("password",:password,user,vp+=1)
+  if $user[:admin]
+    return cancelled unless get_input("admin",:admin,user,vp+=1) 
+    user[:admin] = isTrue?(user[:admin]) 
+  end
+  
+  user.delete_if{ |k, v| (v == u[k]) or v.blank? }
+  user[:domains] = user[:domains].split(",").map {|d| d.strip }.join(",") if user[:domains]
+  
+  if user.empty?
+    $outwin.clear
+    $outwin.setpos(1,0)
+    $outwin.addstr "No change.."
+    $outwin.refresh
+  else
+  
+    $outwin.setpos(vp+=2,0)
+    $outwin.addstr JSON.pretty_generate(user) + "\n\n"
+    $outwin.refresh
+
+    if yesNo?("is this correct? ")
+      apiCall('updating user') do 
+        json = ''
+        if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+          begin
+            json = $api.patch "/owners/#{u[:name]}", user
+            getUserList
+          rescue => ex
+            json = ex.message
+          end
+          $api.release
+        end
+        json
+      end
+    end
+  
+  end
+  
+end
+
+
+############# files ##########################################################
+def loadConfig
+  f = $file_hash[:file_path].gsub(/\.\w+$/,'.cfg')
+  if File.exists?(f)
+    naf = {}
+    $file_hash = JSON.parse(File.read(f), symbolize_names: true)
+    $file_hash[:password] = $credentials_hash[:password]
+    $file_hash[:host] = $credentials_hash[:host]
+    $file_hash[:login] = $credentials_hash[:login]
+    $file_hash[:fields].map! { |f| (f.to_sym rescue f) || f }
+    $file_hash[:original_fields].map! { |f| (f.to_sym rescue f) || f }
+    $file_hash[:alternate_fields].each { |k,v| naf[(k.to_sym rescue k) || k] = v }
+    $file_hash[:alternate_fields] = naf
+    $file_reader.setId_Name
+    # log JSON.pretty_generate($file_hash)
+  end
+end  
+  
+
+def saveConfig
+  return unless $file_reader
+  f = $file_hash[:file_path].gsub(/\.\w+$/,'.cfg')
+  File.open(f,"w") do |fd|
+    fh = $file_hash.deep_copy
+    fh[:password] = '***'
+    fd.write(JSON.pretty_generate(fh))
+  end
+end
+
+
+def saveFile
+  return unless $file_reader
+  r = {}
+  started = false
+  return cancelled unless get_input("Please enter file name",:fn,r,1)
+  if r[:fn]
+    f = File.expand_path(r[:fn])
+    File.open(f,"w") do |fd|
+      fd.write('{"type": "FeatureCollection", "features": ['+"\n")
+      $file_reader.content.each do |o|
+        fd.write(",") if started
+        started = true
+        fd.write(formatObject(o).to_json)
+        fd.write("\n")
+      end
+      fd.write('] }')
+    end
+  end
+end
+
+
+def formatObject(o)
+  begin 
+    tp = {}
+    # log JSON.pretty_generate($file_hash)
+    o[:properties][:data].each do |k,v|
+      if $file_hash[:fields].include?(k) 
+        k2 = $file_hash[:alternate_fields][k]
+        k2 = k if k2.blank?
+        tp[k2] = v 
+      end
+    end
+    o[:properties][:data] = tp
+    
+    if $file_hash[:srid] and $file_hash[:srid] != 4326
+      o[:crs] = {
+        type: 'EPSG',
+        properties: {
+          code: $file_hash[:srid]
+        }
+      }
+    end
+  rescue => e
+    sherror("Error: #{e.message}")
+  end
+  o
+end
+
+def showSample
+  return unless $file_reader
+  begin 
+    o = $file_reader.content[rand($file_reader.content.length)].deep_copy
+    # log JSON.pretty_generate(o)
+    if o[:geometry] and o[:geometry].class == Hash
+      o[:geometry][:coordinates] = ['...'] if  o[:geometry][:coordinates] and o[:geometry][:type] != 'Point'
+    else
+      o[:geometry] = nil
+    end
+    $outwin.clear
+    $outwin.setpos(1,0)
+    $outwin.addstr formatObject(o).to_yaml # JSON.pretty_generate(formatObject(o))
+    $outwin.refresh
+  rescue => e
+    sherror("Error: #{e.message}")
+  end
+end
+
+
+def fileSummary(vp)
+  
+  $outwin.setpos(vp+=1,0)
+  $outwin.addstr sprintf("%14s #{$file_hash[:file_path]}", "file:")
+
+  $outwin.setpos(vp+=1,0)
+  $outwin.addstr sprintf("%14s #{$file_hash[:rowcount]}", "total rows:")
+  
+  $outwin.setpos(vp+=1,0)
+  $outwin.addstr sprintf("%14s #{$file_hash[:unique_id].to_s}","unique id:")
+  
+  if $file_hash[:postcode]
+    $outwin.setpos(vp+=1,0)
+    $outwin.addstr sprintf("%14s #{$file_hash[:postcode]}","postcode in:")
+  end
+
+  if $file_hash[:housenumber]
+    $outwin.setpos(vp+=1,0)
+    $outwin.addstr sprintf("%14s #{$file_hash[:housenumber]}","address/number in:")
+  end
+  
+  if $file_hash[:hasgeometry]
+    $outwin.setpos(vp+=1,0)
+    $outwin.addstr sprintf("%14s found in %s; srid: #{$file_hash[:srid]}","geometry:",$file_hash[:hasgeometry])
+  end
+  vp
+end
+
+def loadFile
+  $file_reader = nil
+  return cancelled unless get_input("file path",:file_path,$credentials_hash ,1)
+  begin 
+    $file_hash = $file_hash.merge $credentials_hash.dup
+    $file_hash[:file_path] = File.expand_path($file_hash[:file_path])
+    $file_reader = FileReader.new($file_hash)
+    $file_hash[:layername] = $layer[:name] if $layer
+    fileSummary(0)
+    $outwin.refresh
+  rescue => e
+    sherror("Error reading file: #{e.inspect}")
+  end
+
+end
+
+def editFields
+  props = $file_reader.content[rand($file_reader.content.length)][:properties][:data]
+  
+  $file_hash[:fields] = []
+  $file_hash[:alternate_fields]  = {}
+  $file_hash[:original_fields].each do |f|
+    $file_hash[:fields] << f
+  end
+  
+  $outwin.clear
+  outAddstr(1, "For each field, please choose Accept, Rename or Ignore")
+  vp = 3
+  accepted_fields = []
+  accepted_fields << $file_hash[:unique_id]
+  curs_set(2)
+  $file_hash[:fields].each do |f|
+    outAddstr(vp,sprintf("-- sample: #{props[f]} --")) 
+    field = getFieldHeader(vp+2,0,sprintf("Field: '#{f}'; (a/r/i) "),f)
+    return cancelled if field == 27
+    if field
+      accepted_fields << f 
+      $file_hash[:alternate_fields][f] = field
+    end
+  end
+  curs_set(0)
+  $file_hash[:fields] = accepted_fields.uniq
+  $file_reader.guessName
+  $file_reader.getAddress
+  $outwin.clear
+  fileSummary(1)
+  $outwin.refresh
+end
+
+
+############# utils ##########################################################
+
+
+def assignGeometry
+  list = $file_hash[:fields].map {|f| $file_hash[:alternate_fields][f].to_s}
+  $outwin.clear
+  x = get_input_from_list('please select x (longitude) field: ', list , 3)
+  y = get_input_from_list('       select y (latitude) field: ', list , 3)
+  unless (x.blank? and y.blank?)
+    $file_reader.findGeometry(x.to_sym, y.to_sym)
+    # $file_reader.guessSRID
+  end
+  $outwin.clear
+  fileSummary(1)
+  $outwin.refresh
+end
+
+def assignAddress
+  list = $layer[:fields].map {|f| f[:name]}
+  $outwin.clear
+  x = get_input_from_list('please select x (longitude) field: ', list , 3)
+  y = get_input_from_list('       select y (latitude) field: ', list , 3)
+  unless (x.blank? and y.blank?)
+  end
+end
+
+
+
+def getFieldHeader(v,h,s,f)
+  a = ''
+  $outwin.setpos(v,h)
+  $outwin.clrtoeol
+  $outwin.addstr s
+  $outwin.refresh
+  
+  a = charIn(["A","a","R","r","I","i"])
+  return 27 if a.ord == 27
+  
+  case a.downcase
+  when 'a'
+    return f
+  when 'i'
+    return nil
+  when 'r'
+    $outwin.setpos(v,h)
+    $outwin.clrtoeol
+    $outwin.addstr "Replacement name for field '#{f}': "
+    $outwin.refresh
+    echo
+    s = $outwin.getstr
+    noecho
+    s
+  end
+end
+
+
+def isTrue?(o)
+  return true if 
+  (o == true) or 
+  (o =~ /^y$/i) or 
+  (o =~ /^t$/i) or 
+  (o =~ /^true$/i) or 
+  (o =~ /^yes$/i) or 
+  (o =~ /^j$/i) or 
+  (o =~ /^ja$/i)
+  false
+end
+
+def cancelled
+  outMessage("Cancelled...")
+end
+
+
+def doExit
+  File.open($configFile, "w")  do |f|
+    f.write($credentials_hash.to_json)
+    f.write("\n")
+  end
+  close_screen
+  exit!(0)
+end
+
+
+def doConnect
+  begin
+    if $api.nil?
+      return if ($credentials_hash[:host].nil? or $credentials_hash[:host]=~/^\s*$/)
+      $api = API.new($credentials_hash[:host])
+    end
+    if $user.nil?
+      if $credentials_hash[:login] and $credentials_hash[:login]!~/^\s*$/
+        if $credentials_hash[:password] and $credentials_hash[:password]!~/^\s*$/
+          res = $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+          $user = $api.get '/owners/' + $credentials_hash[:login]
+          $api.release
+        end
+      end
+    end
+  rescue Exception => e
+    sherror("Error connecting to host: #{e.message}")
+  end
+  if $api
+    getUserList 
+    getLayersList
+  end
+end
+
+
+def setHost
+  vp = 1
+  $api = $user = $error = nil
+  return cancelled unless get_input("hostname",:host,$credentials_hash,1)
+  return cancelled unless get_input("user name",:login,$credentials_hash,2)
+  return cancelled unless get_input("password",:password,$credentials_hash,3)
+  doConnect
+  runFromTop
+end
+
+
+def showMatches(l,v)
+  $outwin.clear
+  l.each do |i|
+    $outwin.setpos(v+=1,0)
+    $outwin.addstr("- #{i}") 
+  end
+  $outwin.refresh
+end
+
+def get_input_from_list(prompt, list, vp, res = '')
+  # 259 up
+  # 258 dn
+  udindex = -1
+  matchl = list
+  prv = inp = nil
+  curs_set(1)
+  $outwin.keypad(true)
+  while true
+    $outwin.setpos(vp,0)
+    $outwin.clrtoeol
+    $outwin.addstr("#{prompt} -> #{res}") 
+    $outwin.refresh
+    prv = inp
+    inp = $outwin.getch
+
+    case inp.ord
+      
+    when 259 # up
+      if udindex == -1
+        matchl = list.select { |i| i.starts_with?(res) }  
+        udindex = 0
+      end
+      res = matchl[udindex -= 1] if (udindex > 0)
+    when 258 # down
+      if udindex == -1
+        matchl = list.select { |i| i.starts_with?(res) } 
+        udindex = 0
+      end
+      res = matchl[udindex += 1] if (udindex <  matchl.length-1)
+    when 27
+      outMessage("Cancelled")
+      $outwin.keypad(false)
+      return ''
+    when 9
+      if prv.ord == 9
+        showMatches(matchl,vp+1)
+      else
+        matchl = list.select { |i| i.starts_with?(res)}
+        res = matchl.sharedStart if matchl[0]
+        udindex = -1
+      end
+    when 10,13
+      break
+    when 127,8
+      udindex = -1
+      res = res[0...-1]
+    else
+      udindex = -1
+      res << inp if (inp.ord > 31)
+    end
+  end
+  $outwin.keypad(false)
+  curs_set(0)
+  res
+end
+
+
+def self.get_string_array(prompt,vp)
+  ret = []
+  echo
+  tempwin=$outwin.subwin( $outheight - vp - 2, $outwidth-2, $vpos+vp+2, 2 )
+  tempwin.setpos(1,1)
+  tempwin.addstr(prompt)
+  vp = 2
+  tempwin.setpos(vp,1)
+  loop do
+    tempwin.setpos(vp,1)
+    tempwin.addstr("-> ")
+    tempwin.refresh
+    s = tempwin.getstr
+    break if s.length == 0
+    vp += 1
+    ret << s
+  end
+  noecho
+  tempwin.clear
+  tempwin.close
+  $outwin.refresh
+  ret
+end
+
+
+def get_input(prompt, symbol, hash, vp, defs=nil)
+  res = defs ? defs : ''
+  echo
+  curs_set(1)
+  $outwin.keypad(true)
+
+  while true
+    if hash[symbol] and symbol != :password
+      outAddstr(vp,"#{prompt} (#{hash[symbol]}) -> #{res}") 
+    else
+      outAddstr(vp,"#{prompt} -> #{res}") 
+    end
+    $outwin.refresh
+    inp = $outwin.getch
+    case inp.ord
+    when 27
+      outMessage("Cancelled")
+      return false
+    when 10,13
+      break
+    when 127,8
+      res = res[0...-1]
+    else
+      res << inp if (inp.ord > 31)
+    end
+  end
+
+  curs_set(0)
+  noecho
+  hash[symbol] = res.strip if res.length > 0
+  $outwin.keypad(false)
+  true
+end
+
+
+
+def banner
+  clear
+  setpos(0,0)
+  addstr "CitySDK API, interactive console. "
+  setpos(1,0)
+  addstr "host: #{$credentials_hash[:host]}" if $api
+  addstr "; user: #{$credentials_hash[:login]}" if $user
+  addstr "; layer: #{$layer[:name]} " if $layer
+end
+
+def runFromTop
+  if ($user and $user[:admin])
+    $topMenu.replace(2, MenuItem.new('3','users', lambda{$userMenu.run})) 
+  else
+    $topMenu.replace(2, MenuItem.new('3','edit user', lambda{editUser()})) 
+  end
+  $topMenu.run
+end
+
+def yesNo?(p,v=nil)
+  $outwin.setpos(v,0) if v
+  $outwin.addstr("#{p} ") 
+  $outwin.refresh
+  ['Y','y','j','J'].include? $outwin.getch
+end
+
+
+
+def apiCall(error,noerror='',&block)
+  begin
+    json = yield
+    $outwin.clear
+    $outwin.setpos(1,0)
+    if json.class == Hash
+      $outwin.addstr JSON.pretty_generate(json) + "\n"
+    elsif json == ''
+      $outwin.addstr noerror + "\n"
+    elsif json.class == Array
+      if json[0] == {}
+        $outwin.addstr noerror + "\n"
+      else
+        $outwin.addstr JSON.pretty_generate(json[0]) + "\n"
+      end
+    end
+    $outwin.refresh
+  rescue Exception => e
+    sherror("Error #{error}: #{e.message}")
+  end
+end
+
+def outAddstr(v,s)
+  $outwin.setpos(v,0)
+  $outwin.clrtoeol
+  $outwin.addstr(s)
+  $outwin.refresh
+end
+
+
+def sherror(e)
+  setpos(Curses.lines-1,1)
+  clrtoeol
+  addstr($error=e)
+  refresh
+  log $error unless $error.blank?
+  false
+end
+
+def log(m)
+  File.open(File.expand_path('~/csdk.log'), "a")  do |f|
+    f.write("#{m}\n")
+  end
+end
+
+
+def not_yet
+  outMessage("Not yet implemented") 
+end
+
+def charIn(arr)
+  a = $outwin.getch
+  while !(arr.include?(a) or a.ord == 27)
+    a = $outwin.getch
+  end
+  a
+end
+
+def outObject(o,v,h)
+  arr = o.to_yaml.split("\n")
+  arr.each do |a|
+    $outwin.setpos(v+=1,h)
+    $outwin.addstr a.strip
+  end
+end
+
+def outMessage(m)
+  $outwin.clear
+  $outwin.setpos(1,0)
+  $outwin.addstr m
+  $outwin.refresh
+end
+
+
+
+
+############# run!! ##########################################################
+
+
+
+$credentials_hash = {}
+$configFile = File.expand_path("~/.csdk")
+$outwin = nil
+$api = nil
+$user = $layer = nil
+$error = nil
+$file_hash = {}
+
+if File.exists? $configFile
+  begin 
+    $credentials_hash = JSON.parse( File.read($configFile), symbolize_names: true)
+  rescue
+  end
+end
+
+
+$fileMenu = Menu.new( [
+  MenuItem.new('2','layer: add or edit fields', lambda { layerAddFields }),
+  MenuItem.new('3','layer: add or edit context', lambda { not_yet }),
+  MenuItem.new('5','file: load & analyse', lambda{loadFile}),
+  MenuItem.new('6','file: rename fields', lambda{editFields}),
+  MenuItem.new('7','file: show sample', lambda{showSample}),
+  MenuItem.new('8','file: assign geom columns', lambda { assignGeometry }),
+  MenuItem.new('9','file: do import', lambda { doImport }),
+  MenuItem.new('s','file: save processed file', lambda { saveFile }),
+  MenuItem.new('c','file: save config', lambda { saveConfig }),
+  MenuItem.new('q','back', lambda{$layer = nil; $topMenu.run})
+])
+
+$layerMenu = Menu.new( [
+  MenuItem.new('1','list layers', lambda{showLayers}),
+  MenuItem.new('2','layer summary', lambda { layerSummary }),
+
+  MenuItem.new('3','create layer', lambda{createLayer}),
+  MenuItem.new('4','edit layer', lambda { editLayer }),
+  MenuItem.new('5','clear objects', lambda { clearLayer }),
+  
+  MenuItem.new('6','delete layer', lambda { deleteLayer }),
+  MenuItem.new('q','back', lambda{$topMenu.run})
+])
+
+$userMenu = Menu.new( [
+  MenuItem.new('1','list users', lambda{showUsers}),
+  MenuItem.new('2','create user', lambda{createUser}),
+  MenuItem.new('3','edit user', lambda{ editUser } ),
+  MenuItem.new('4','delete user', lambda { deleteUser }),
+  MenuItem.new('q','back', lambda{$topMenu.run})
+])
+
+$topMenu = Menu.new( [
+  MenuItem.new('1','set host & credentials', lambda{setHost}),
+  MenuItem.new('2','layers', lambda{$layerMenu.run}),
+  MenuItem.new('3','edit user', lambda{}),
+  MenuItem.new('4','analysis / upload', lambda{ 
+    $fileMenu.run
+  }),
+  MenuItem.new('q','quit', lambda{doExit})
+])
+
+
+while ARGV[0]
+  s = ARGV.shift
+  $nohttps = s=='nohttps'
+end
+
+init_screen
+nl
+noecho
+
+trap(:INT) do  
+  doExit
+end  
+
+
+doConnect
+runFromTop
