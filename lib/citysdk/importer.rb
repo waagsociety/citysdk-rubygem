@@ -62,7 +62,7 @@ module CitySDK
       h.each_key do |k|
         k = (k.to_sym rescue k) || k
         j = @params[:alternate_fields][k]
-        data[j] = h[k] if @params[:fields].include?(k)
+        data[j] = h[k] if @params[:fields].include?(k) and j
       end
       data
     end
