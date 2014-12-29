@@ -1,5 +1,4 @@
 
-
 module CitySDK
   TEST_HOST = 'localhost:9292'
   # TEST_HOST = 'test-api.citysdk.waag.org'
@@ -20,13 +19,10 @@ module CitySDK
     licence: "CC0",
     fields: []
   }
-  
+
   $api = API.new(TEST_HOST)
 
-  
-  
   describe API do
-
 
     it "can be connected to" do
       expect($api.class).to be(CitySDK::API)
@@ -67,5 +63,5 @@ module CitySDK
     end
 
   end
-  
+
 end
