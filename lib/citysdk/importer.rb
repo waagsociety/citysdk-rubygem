@@ -29,7 +29,7 @@ module CitySDK
       return @filereader.write(path)
     end
 
-    def setParameter(k,v)
+    def set_parameterr(k,v)
       begin
         @params[(k.to_sym rescue k) || k] = v
         return true
@@ -77,7 +77,7 @@ module CitySDK
 
       # TODO: add possibility to add node to postal code
       # if @params[:hasaddress] == 'certain'
-      #   failed = addToAddress(&block)
+      #   failed = add_to_address(&block)
       #  end
 
       if failed == []
@@ -132,7 +132,7 @@ module CitySDK
       return result
     end
 
-    def addToAddress()
+    def add_to_address()
       failed = []
       if @params[:postcode] and @params[:housenumber]
         begin

@@ -7,7 +7,7 @@ module CitySDK
     def newImporter(f)
       @importer = Importer.new({
         file_path: f,
-        host: TEST_HOST, 
+        host: TEST_HOST,
         layername: TEST_LAYER[:name]
       })
     end
@@ -30,9 +30,9 @@ module CitySDK
     it "can make a layer and delete" do
 
       newImporter('./spec/files/hotels.csv')
-      
-      @importer.setParameter(:name,TEST_USER)
-      @importer.setParameter(:password,TEST_PASS)
+
+      @importer.set_parameter(:name,TEST_USER)
+      @importer.set_parameter(:password,TEST_PASS)
       @importer.sign_in
       res = @importer.api.post('/layers',TEST_LAYER)
       expect( (!!res[:features] and res[:features].length == 1) ).to be(true)
@@ -43,14 +43,14 @@ module CitySDK
       res = @importer.api.get("/layers/test.rspec/objects")
       expect( (!!res[:features] and res[:features].length == 0) ).to be(true)
 
-      @importer.api.authenticate(TEST_USER,TEST_PASS) do 
+      @importer.api.authenticate(TEST_USER,TEST_PASS) do
         expect( @importer.api.delete("/layers/#{TEST_LAYER[:name]}") ).to eq({})
       end
 
     end
 
   end
-  
+
   describe "FileReader" do
 
     it "can parse json" do
