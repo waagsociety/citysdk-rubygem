@@ -1,8 +1,6 @@
 require 'json'
 require 'faraday'
 
-
-
 module CitySDK
 
   def log(m)
@@ -10,7 +8,7 @@ module CitySDK
       f.write(m + "\n")
     end
   end
-  
+
   class HostException < ::Exception
   end
 
@@ -21,11 +19,6 @@ module CitySDK
     attr_accessor :page_size
     attr_accessor :format
 
-    @@create_tpl =  {
-      type: "FeatureCollection",
-      features: []
-    }
-
     def initialize(host, port=nil)
       @error = '';
       @layer = '';
@@ -35,13 +28,13 @@ module CitySDK
       @updated = @created = 0;
       set_host(host,port)
     end
-    
+
     def authenticate(n,p)
       @name = n;
       @passw = p;
 
       resp = @connection.get '/session', { :name => @name, :password => @passw }
-      if resp.status.between?(200, 299) 
+      if resp.status.between?(200, 299)
         resp = CitySDK::parseJson(resp.body)
         if (resp.class == Hash) and resp[:session_key]
           @connection.headers['X-Auth'] = resp[:session_key]
@@ -64,7 +57,7 @@ module CitySDK
     def set_host(host,port=nil)
       @host = host
       @port = port
-      
+
       @host.gsub!(/^http(s)?:\/\//,'')
 
       if port.nil?
@@ -75,7 +68,7 @@ module CitySDK
           @port = 80
         end
       end
-      
+
       if !($nohttps or @host =~ /.+\.dev/ or @host == 'localhost' or @host == '127.0.0.1' or @host == '0.0.0.0')
         @connection = Faraday.new :url => "https://#{@host}", :ssl => {:verify => false }
       else
@@ -85,15 +78,18 @@ module CitySDK
         :user_agent => 'CitySDK_API GEM ' + CitySDK::VERSION,
         :content_type => 'application/json'
       }
-      begin 
+      begin
         get('/')
       rescue Exception => e
-        raise CitySDK::Exception.new("Trouble connecting to api @ #{host}")
+        raise CitySDK::Exception.new("Trouble connecting to API @ #{host}")
       end
-      @create = @@create_tpl
+      @create =  {
+        type: "FeatureCollection",
+        features: []
+      }
     end
-    
-    def addFormat(path)
+
+    def add_format(path)
       if path !~ /format/
         path = path + ((path =~ /\?/) ? "&" : "?") + "format=#{@format}"
       end
@@ -101,15 +97,10 @@ module CitySDK
       path + "&page_size=#{@page_size}"
     end
 
-    def set_createTemplate(ctpl) 
-      ctpl[:features] = []
-      @create = @@create_tpl = ctpl
-    end
-
     def set_layer(l)
       @layer = l
     end
-  
+
     def next
       @next ? get(@next) : "{}"
     end
@@ -130,9 +121,9 @@ module CitySDK
       @create[:features] << n
       create_flush if @create[:features].length >= @batch_size
     end
-  
+
     def authorized?
-     !! @connection.headers['X-Auth'] 
+     !! @connection.headers['X-Auth']
     end
 
     def release
@@ -148,10 +139,10 @@ module CitySDK
       end
       return {created: @created}
     end
-  
+
     def delete(path)
-      if authorized? 
-        resp = @connection.delete(addFormat(path))
+      if authorized?
+        resp = @connection.delete(add_format(path))
         if resp.status.between?(200, 299)
           @last_result = { status: resp.status, headers: resp.headers }
           return (resp.body and resp.body !~ /\s*/) ? CitySDK::parseJson(resp.body) : ''
@@ -161,10 +152,10 @@ module CitySDK
       end
       raise CitySDK::Exception.new("DELETE needs authorization.")
     end
-  
+
     def post(path,data)
-      if authorized? 
-        resp = @connection.post(addFormat(path),data.to_json)
+      if authorized?
+        resp = @connection.post(add_format(path),data.to_json)
         @last_result = { status: resp.status, headers: resp.headers }
         return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
         @error = resp.body # CitySDK::parseJson(resp.body)[:error]
@@ -179,8 +170,8 @@ module CitySDK
     end
 
     def patch(path,data)
-      if authorized? 
-        resp = @connection.patch(addFormat(path),data.to_json)
+      if authorized?
+        resp = @connection.patch(add_format(path),data.to_json)
         @last_result = { status: resp.status, headers: resp.headers }
         return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
         @error = CitySDK::parseJson(resp.body)[:error]
@@ -190,8 +181,8 @@ module CitySDK
     end
 
     def put(path,data)
-      if authorized? 
-        resp = @connection.put(addFormat(path),data.to_json)
+      if authorized?
+        resp = @connection.put(add_format(path),data.to_json)
         @last_result = { status: resp.status, headers: resp.headers }
         return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
         @error = CitySDK::parseJson(resp.body)[:error] || {status: resp.status}
@@ -201,14 +192,14 @@ module CitySDK
     end
 
     def get(path)
-      resp = @connection.get(addFormat(path))
+      resp = @connection.get(add_format(path))
       @next = (resp.headers['Link'] =~ /^<(.+)>;\s*rel="next"/) ? $1 : nil
       @last_result = { status: resp.status, headers: resp.headers }
       return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
       @error = CitySDK::parseJson(resp.body)[:error]
       raise HostException.new(@error)
     end
-    
+
     def create_flush
       if @create[:features].length > 0
         tally post("/layers/#{@layer}/objects",@create)
@@ -219,8 +210,7 @@ module CitySDK
     def tally(res)
       @created += res.length
     end
-    
+
   end
 
 end
-
