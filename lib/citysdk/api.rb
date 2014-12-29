@@ -16,14 +16,14 @@ module CitySDK
     attr_reader   :last_result
     attr_reader   :error
     attr_accessor :batch_size
-    attr_accessor :page_size
+    attr_accessor :per_page
     attr_accessor :format
 
     def initialize(host, port=nil)
       @error = '';
       @layer = '';
       @batch_size = 1000;
-      @page_size = 25;
+      @per_page = 25;
       @format = 'jsonld'
       @updated = @created = 0;
       set_host(host,port)
@@ -93,8 +93,8 @@ module CitySDK
       if path !~ /format/
         path = path + ((path =~ /\?/) ? "&" : "?") + "format=#{@format}"
       end
-      return path if path =~ /page_size/
-      path + "&page_size=#{@page_size}"
+      return path if path =~ /per_page/
+      path + "&per_page=#{@per_page}"
     end
 
     def set_layer(l)

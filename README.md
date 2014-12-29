@@ -49,7 +49,7 @@ Call                                   | Description
 `@api.objects(layer=nil)` | Shortcut for `get '/objects'`. When a layer name is supplied, returns only objects from with data on this layer, and the layerdata itself.
 `@api.next` | When more results are available, returns the next page.
 `@api.format = <format>` | Specify the output format. Currently supported are (Geo)JSON and (Geo)JSON-LD.
-`@api.page_size = <page_size>` | Specify the number of features returned; default is 25.
+`@api.per_page = <per_page>` | Specify the number of features returned; default is 10.
 `@api.batch_size = <n>` | When adding objects thorugh 'create_object', they are buffered until '<n>' objects are available, then a single call is issuesd to the API.
 `@api.last_result` | Returns a Hash with the last HTTP status and the headers returned from the last call.
 
