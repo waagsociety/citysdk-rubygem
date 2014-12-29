@@ -1,14 +1,14 @@
 
 module CitySDK
-  
+
   class Importer
     attr_reader :filereader, :api, :params
-    
+
     def initialize(pars, fr = nil)
       @params = pars
-      
+
       raise Exception.new("Missing :host in Importer parameters.") if @params[:host].nil?
-      raise Exception.new("Missing :layername in Importer parameters.") if @params[:layername].nil?
+      raise Exception.new("Missing :layer in Importer parameters.") if @params[:layer].nil?
       raise Exception.new("Missing :file_path in Importer parameters.") if @params[:file_path].nil?
 
       @api = CitySDK::API.new(@params[:host])
@@ -20,15 +20,15 @@ module CitySDK
 
       @params[:addresslayer] = 'bag.vbo' if @params[:addressleyer].nil?
       @params[:addressfield] = 'postcode_huisnummer' if @params[:addressfield].nil?
-      
+
       @filereader = fr || FileReader.new(@params)
     end
-    
-    
+
+
     def write(path)
       return @filereader.write(path)
     end
-    
+
     def setParameter(k,v)
       begin
         @params[(k.to_sym rescue k) || k] = v
@@ -42,7 +42,7 @@ module CitySDK
       begin
         sign_out if @signed_in
         @api.set_host(@params[:host])
-        @api.set_layer(@params[:layername])
+        @api.set_layer(@params[:layer])
         @api.authenticate(@params[:name],@params[:password])
         @signed_in = true
       rescue => e
@@ -56,8 +56,8 @@ module CitySDK
       @signed_in = false
       return @api.release
     end
-  
-    def filterFields(h)
+
+    def filter_fields(h)
       data = {}
       h.each_key do |k|
         k = (k.to_sym rescue k) || k
@@ -66,55 +66,48 @@ module CitySDK
       end
       data
     end
-    
-    
-    def geomToJSON(a)
-      # puts JSON.pretty_generate(a)
-      a
-    end
-    
-    def doImport(&block)
+
+    def do_import(&block)
       result = {
-        :created => 0,
-        :not_added => 0
+        created: 0,
+        not_added: 0
       }
-      
+
       failed = nil
-      
-#      if @params[:hasaddress] == 'certain'
-#        failed = addToAddress(&block)
-#      end
-      
+
       # TODO: add possibility to add node to postal code
+      # if @params[:hasaddress] == 'certain'
+      #   failed = addToAddress(&block)
+      #  end
 
       if failed == []
         result[:updated] += @filereader.content.length
         return result
       end
-      
-      if failed 
+
+      if failed
         result[:updated] += (@filereader.content.length - failed.length)
       end
-      
+
       objects = failed || @filereader.content
       count = objects.length
 
       begin
         sign_in
-        
+
         if @params[:hasgeometry]
           begin
             objects.each do |record|
-              
+
               node = {
                 type: 'Feature',
                 properties: record[:properties],
-                geometry: geomToJSON(record[:geometry]),
+                geometry: record[:geometry],
               }
-              
-              node[:properties][:data] = filterFields(record[:properties][:data])
+
+              node[:properties][:data] = filter_fields(record[:properties][:data])
               node[:crs] = { type: 'EPSG', properties: { code: @params[:srid]  } } if @params[:srid] != 4326
-              
+
               node[:properties][:title] = node[:properties][:data][@params[:title]] if @params[:title]
 
               yield(node[:properties]) if block_given?
@@ -160,8 +153,8 @@ module CitySDK
               qres[:status]='nix'
             end
             if qres[:status]=='success' and qres[:results] and qres[:results][0]
-              url = '/' + qres[:results][0][:cdk_id] + '/' + @params[:layername]
-              data = filterFields(row)
+              url = '/' + qres[:results][0][:cdk_id] + '/' + @params[:layer]
+              data = filter_fields(row)
               yield({addto: qres[:results][0][:cdk_id], data: data}) if block_given?
               n = @api.put(url,{'data'=>data})
             else
