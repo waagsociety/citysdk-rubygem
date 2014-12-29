@@ -1,12 +1,10 @@
 # CitySDK GEM
 
-The CitySDK gem encapulates the CitySDK LD-API, and offers high-level file import functionalities.
-The CitySDK LD-API is part of an (open)data distribution platform developed in the EU CitySDK program by [Waag Society](http://waag.org).
-Find the platform itself on [github](https://github.com/waagsociety/citysdk-ld), background is [here](http://dev.citysdk.waag.org).
+The CitySDK gem encapulates the CitySDK LD API, and offers high-level file import functionalities.
+The CitySDK LD API is part of an open data distribution platform developed in the EU CitySDK program by [Waag Society](http://waag.org).
+Find the platform itself on [GitHub](https://github.com/waagsociety/citysdk-ld), background is [here](http://dev.citysdk.waag.org).
 
-In order to best get an overview of the way to use the GEM to import files into the CitySDK LD-API, have a look at the 'admr' importer for the top-level administrative regions in the Netherlands.
-The data consists of three ESRI shape files; the importer is well commented, explaining most of the possibilities of the GEM. 
-Please download the importer [here](https://github.com/waagsociety/citysdk-amsterdam/tree/master/importers/admr)
+In order to best get an overview of the way to use the gem to import files into the CitySDK LD API, have a look at the [`admr` importer]((https://github.com/waagsociety/citysdk-amsterdam/tree/master/importers/admr)) for the top-level administrative regions in the Netherlands. The data consists of three ESRI Shapefiles; the importer is well-commented, explaining most of the possibilities of the gem.
 
 ## Installation
 
@@ -18,12 +16,11 @@ If you're using Bundler, add the gem to Gemfile.
 
     gem 'citysdk'
 
-Then run `bundle install`.
-
+Then, run `bundle install`.
 
 ## Usage
-The GEM can be used on two different levels, either simply as a wrapper around the API, or as a means to read, convert and import various types of data files.
-The gem exposes it's functionality through three different objects:
+
+The gem can be used on two different levels, either simply as a wrapper around the API, or as a means to read, convert and import various types of data files. The gem exposes its functionality through three different objects:
 
 - CitySDK::API
 - CitySDK::FileReader
@@ -33,11 +30,9 @@ The FileReader can be used stand-alone to read, edit and save data files, the Im
 
 The FileReader has support for CSV, Shape and (Geo)Json files. XML is currently not supported; we recommend [OpenRefine](https://github.com/OpenRefine/OpenRefine/wiki/Downloads) to convert these to either CSV or JSON.
 
-
 ### CitySDK::API Usage
 
-
-CALL                                  | Description
+Call                                   | Description
 |:-------------------------------------|:-------------------------------------------------------
 `@api = CitySDK::API.new('<endpoint IP>')` | Establish a link to the particular endpoint
 `@api.authenticate('<name>','<password>')` | For reading this is not necessary, for writing and deleting you need to authenticate. The authentication times out if not used (is reset by writing to the API). This call takes an optional  block for immediate automatic release when the block has been called.
@@ -57,13 +52,6 @@ CALL                                  | Description
 `@api.page_size = <page_size>` | Specify the number of features returned; default is 25.
 `@api.batch_size = <n>` | When adding objects thorugh 'create_object', they are buffered until '<n>' objects are available, then a single call is issuesd to the API.
 `@api.last_result` | Returns a Hash with the last HTTP status and the headers returned from the last call.
-
-
-
-
-
-
-
 
 ## Contributing
 
