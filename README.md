@@ -36,20 +36,20 @@ Call                                   | Description
 |:-------------------------------------|:-------------------------------------------------------
 `@api = CitySDK::API.new('<endpoint IP>')` | Establish a link to the particular endpoint
 `@api.authenticate('<name>','<password>')` | For reading this is not necessary, for writing and deleting you need to authenticate. The authentication times out if not used (is reset by writing to the API). This call takes an optional  block for immediate automatic release when the block has been called.
-`@api.get path` | Simply issue a 'GET' against the API; the results are returned as a ruby Hash.
-`@api.put path,data` | PUT a resource; see [Documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
-`@api.post path,data` | POST a resource; see [Documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
-`@api.patch path,data` | PATCH a resource; see [Documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
+`@api.get path` | Simply issue a 'GET' against the API; the results are returned as a Ruby Hash.
+`@api.put path,data` | PUT a resource; see [documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
+`@api.post path,data` | POST a resource; see [documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
+`@api.patch path,data` | PATCH a resource; see [documentation](https://github.com/waagsociety/citysdk-ld/wiki/Objects)
 `@api.delete path` | Issue a DELETE to the API; path points to the resource to delete. Requires authentication.
-`@api.release` | This call will flush any buffered object that were scheduled to be created or updated. See also batch_size, below.
+`@api.release` | This call will flush any buffered object that were scheduled to be created or updated. See also `batch_size`, below.
 `@api.set_layer(layername)` | Set the the layer for subsequent 'create_object' calls. User must be authenticate for this layer in order to sucesfully create objects.
 `@api.create_object(objhash)` | Adds an object to the database. See also batch_size, below.
 `@api.layers` | Shortcut for `get '/layers'`
 `@api.owners` | Shortcut for `get '/owners'`
 `@api.objects(layer=nil)` | Shortcut for `get '/objects'`. When a layer name is supplied, returns only objects from with data on this layer, and the layerdata itself.
 `@api.next` | When more results are available, returns the next page.
-`@api.format = <format>` | Specify the output format. Currently supported are (Geo)JSON and (Geo)JSON-LD.
-`@api.per_page = <per_page>` | Specify the number of features returned; default is 10.
+`@api.format = <format>` | Specify the output format. Currently supported are `json-ld` and `json`.
+`@api.per_page = <per_page>` | Specify the number of features returned; default is 25.
 `@api.batch_size = <n>` | When adding objects thorugh 'create_object', they are buffered until '<n>' objects are available, then a single call is issuesd to the API.
 `@api.last_result` | Returns a Hash with the last HTTP status and the headers returned from the last call.
 
