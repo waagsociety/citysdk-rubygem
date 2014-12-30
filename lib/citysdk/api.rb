@@ -3,12 +3,6 @@ require 'faraday'
 
 module CitySDK
 
-  def log(m)
-    File.open(File.expand_path('~/csdk.log'), "a")  do |f|
-      f.write(m + "\n")
-    end
-  end
-
   class HostException < ::Exception
   end
 
@@ -19,27 +13,27 @@ module CitySDK
     attr_accessor :per_page
     attr_accessor :format
 
-    def initialize(host, port=nil)
+    def initialize(host)
       @error = '';
       @layer = '';
       @batch_size = 1000;
       @per_page = 25;
       @format = 'jsonld'
       @updated = @created = 0;
-      set_host(host,port)
+      set_host(host)
     end
 
-    def authenticate(n,p)
-      @name = n;
-      @passw = p;
+    def authenticate(name, password)
+      @name = name;
+      @password = password;
 
-      resp = @connection.get '/session', { :name => @name, :password => @passw }
+      resp = @connection.get '/session', { name: @name, password: @password }
       if resp.status.between?(200, 299)
-        resp = CitySDK::parseJson(resp.body)
+        resp = CitySDK::parse_json(resp.body)
         if (resp.class == Hash) and resp[:session_key]
           @connection.headers['X-Auth'] = resp[:session_key]
         else
-          raise Exception.new("Invalid credentials")
+          raise Exception.new('Invalid credentials')
         end
       else
         raise Exception.new(resp.body)
@@ -54,28 +48,15 @@ module CitySDK
       true
     end
 
-    def set_host(host,port=nil)
-      @host = host
-      @port = port
-
-      @host.gsub!(/^http(s)?:\/\//,'')
-
-      if port.nil?
-        if host =~ /^(.*):(\d+)$/
-          @port = $2
-          @host = $1
-        else
-          @port = 80
-        end
-      end
-
-      if !($nohttps or @host =~ /.+\.dev/ or @host == 'localhost' or @host == '127.0.0.1' or @host == '0.0.0.0')
-        @connection = Faraday.new :url => "https://#{@host}", :ssl => {:verify => false }
+    def set_host(host)
+      if host.index('https') == 0
+        @connection = Faraday.new url: host, ssl: { verify: false }
       else
-        @connection = Faraday.new :url => "http://#{@host}:#{@port}"
+        @connection = Faraday.new url: host
       end
+
       @connection.headers = {
-        :user_agent => 'CitySDK_API GEM ' + CitySDK::VERSION,
+        :user_agent => 'CitySDK LD API GEM ' + CitySDK::VERSION,
         :content_type => 'application/json'
       }
       begin
@@ -98,6 +79,7 @@ module CitySDK
     end
 
     def set_layer(l)
+      create_flush
       @layer = l
     end
 
@@ -127,13 +109,14 @@ module CitySDK
     end
 
     def release
-      create_flush # send any remaining entries in the create buffer
+      # send any remaining entries in the create buffer
+      create_flush
       if authorized?
         resp = @connection.delete('/session')
         if resp.status.between?(200, 299)
           @connection.headers.delete('X-Auth')
         else
-          @error = CitySDK::parseJson(resp.body)[:error]
+          @error = CitySDK::parse_json(resp.body)[:error]
           raise HostException.new(@error)
         end
       end
@@ -141,62 +124,48 @@ module CitySDK
     end
 
     def delete(path)
+      write :delete, path
+    end
+
+    def post(path, data)
+      write :post, path, data
+    end
+
+    def patch(path, data)
+      write :patch, path, data
+    end
+
+    def put(path, data)
+      write :put, path, data
+    end
+
+    def write(method, path, data = nil)
       if authorized?
-        resp = @connection.delete(add_format(path))
-        if resp.status.between?(200, 299)
-          @last_result = { status: resp.status, headers: resp.headers }
-          return (resp.body and resp.body !~ /\s*/) ? CitySDK::parseJson(resp.body) : ''
+        payload = data ? data.to_json : nil
+        resp = @connection.send(method, path, payload)
+        @last_result = { status: resp.status, headers: resp.headers }
+
+        if resp.status == 401 and @name and @password
+          # API was authenticated before, so probably timed out. Try again!
+          if authenticate(@name, @password)
+            resp = @connection.send(method, path, payload)
+            @last_result = { status: resp.status, headers: resp.headers }
+          end
         end
-        @error = CitySDK::parseJson(resp.body)[:error]
+
+        return CitySDK::parse_json(resp.body) if resp.status.between?(200, 299)
+        @error = CitySDK::parse_json(resp.body)[:error] || {status: resp.status}
         raise HostException.new(@error)
       end
-      raise CitySDK::Exception.new("DELETE needs authorization.")
-    end
-
-    def post(path,data)
-      if authorized?
-        resp = @connection.post(add_format(path),data.to_json)
-        @last_result = { status: resp.status, headers: resp.headers }
-        return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
-        @error = resp.body # CitySDK::parseJson(resp.body)[:error]
-
-        File.open(File.expand_path("~/post_error_data.json"),"w") do |fd|
-          fd.write(JSON.pretty_generate({error: @error, data: data}))
-        end
-
-        raise HostException.new(@error)
-      end
-      raise CitySDK::Exception.new("POST needs authorization.")
-    end
-
-    def patch(path,data)
-      if authorized?
-        resp = @connection.patch(add_format(path),data.to_json)
-        @last_result = { status: resp.status, headers: resp.headers }
-        return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
-        @error = CitySDK::parseJson(resp.body)[:error]
-        raise HostException.new(@error)
-      end
-      raise CitySDK::Exception.new("PATCH needs authorization.")
-    end
-
-    def put(path,data)
-      if authorized?
-        resp = @connection.put(add_format(path),data.to_json)
-        @last_result = { status: resp.status, headers: resp.headers }
-        return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
-        @error = CitySDK::parseJson(resp.body)[:error] || {status: resp.status}
-        raise HostException.new(@error)
-      end
-      raise CitySDK::Exception.new("PUT needs authorization.")
+      raise CitySDK::Exception.new("#{method.upcase} needs authorization")
     end
 
     def get(path)
       resp = @connection.get(add_format(path))
       @next = (resp.headers['Link'] =~ /^<(.+)>;\s*rel="next"/) ? $1 : nil
       @last_result = { status: resp.status, headers: resp.headers }
-      return CitySDK::parseJson(resp.body) if resp.status.between?(200, 299)
-      @error = CitySDK::parseJson(resp.body)[:error]
+      return CitySDK::parse_json(resp.body) if resp.status.between?(200, 299)
+      @error = CitySDK::parse_json(resp.body)[:error]
       raise HostException.new(@error)
     end
 
