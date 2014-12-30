@@ -54,7 +54,7 @@ module CitySDK
   describe "FileReader" do
 
     it "can parse json" do
-      j = CitySDK::parseJson('{ "arr" : [0,1,1,1], "hash": {"aap": "noot"}, "num": 0 }')
+      j = CitySDK::parse_json('{ "arr" : [0,1,1,1], "hash": {"aap": "noot"}, "num": 0 }')
       expect(j[:arr].length).to be(4)
       expect(j[:num].class).to be(Fixnum)
       expect(j[:hash][:aap]).to eq("noot")

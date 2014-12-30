@@ -8,48 +8,48 @@ require 'tmpdir'
 module CitySDK
 
   class FileReader
-    
+
     RE_Y = /lat|(y.*coord)|(y.*pos.*)|(y.*loc(atie|ation)?)/i
     RE_X = /lon|lng|(x.*coord)|(x.*pos.*)|(x.*loc(atie|ation)?)/i
     RE_GEO = /^(geom(etry)?|location|locatie|coords|coordinates)$/i
     RE_NAME = /(title|titel|naam|name)/i
     RE_A_NAME = /^(naam|name|title|titel)$/i
-    
+
     attr_reader :file, :content,:params
 
     def initialize(pars)
       @params = pars
       file_path = File.expand_path(@params[:file_path])
       if File.extname(file_path) == '.csdk'
-        readCsdk(file_path)
+        read_csdk(file_path)
       else
         ext = @params[:originalfile] ? File.extname(@params[:originalfile]) : File.extname(file_path)
         case ext
           when /\.zip/i
-            readZip(file_path)
+            read_zip(file_path)
           when /\.(geo)?json/i
-            readJSON(file_path)
+            read_json(file_path)
           when /\.shp/i
-            readShape(file_path)
+            read_shapefile(file_path)
           when /\.csv|tsv/i
-            readCsv(file_path)
+            read_csv(file_path)
           when /\.csdk/i
-            readCsdk(file_path)
+            read_csdk(file_path)
           else
             raise "Unknown or unsupported file type: #{ext}."
         end
       end
-      
+
       @params[:rowcount] = @content.length
-      getFields unless @params[:fields]
-      guessName unless @params[:name]
-      guessSRID unless @params[:srid]
-      findUniqueField  unless @params[:unique_id]
-      getAddress unless @params[:hasaddress]
-      setId_Name
+      get_fields unless @params[:fields]
+      guess_name unless @params[:name]
+      guess_srid unless @params[:srid]
+      find_unique_field  unless @params[:unique_id]
+      get_address unless @params[:hasaddress]
+      set_id_name
     end
-    
-    def getAddress
+
+    def get_address
       pd = pc = hn = ad = false
       @params[:housenumber] = nil
       @params[:hasaddress] = 'unknown'
@@ -67,7 +67,7 @@ module CitySDK
 
     end
 
-    def setId_Name
+    def set_id_name
       count = 123456
       if @params[:unique_id]
         @content.each do |h|
@@ -86,8 +86,8 @@ module CitySDK
         end
       end
     end
-    
-    def findUniqueField
+
+    def find_unique_field
       fields = {}
       @params[:unique_id] = nil
       @content.each do |h|
@@ -103,10 +103,10 @@ module CitySDK
           break
         end
       end
-      
+
     end
 
-    def guessName
+    def guess_name
       @params[:name] = nil
       @params[:fields].reverse.each do |k|
         if(k.to_s =~ RE_A_NAME)
@@ -119,7 +119,7 @@ module CitySDK
       end
     end
 
-    def getFields
+    def get_fields
       @params[:fields] = []
       @params[:original_fields] = []
       @params[:alternate_fields] = {}
@@ -130,10 +130,10 @@ module CitySDK
         @params[:alternate_fields][k] = k
       end
     end
-    
-    def guessSRID
+
+    def guess_srid
       return unless @content[0][:geometry] and @content[0][:geometry].class == Hash
-      @params[:srid] = 4326 
+      @params[:srid] = 4326
       g = @content[0][:geometry][:coordinates]
       if(g)
         while g[0].is_a?(Array)
@@ -141,19 +141,19 @@ module CitySDK
         end
         lon = g[0]
         lat = g[1]
-        # if lon > -180.0 and lon < 180.0 and lat > -90.0 and lat < 90.0 
-        #   @params[:srid] = 4326 
+        # if lon > -180.0 and lon < 180.0 and lat > -90.0 and lat < 90.0
+        #   @params[:srid] = 4326
         # else
         if lon.between?(-7000.0,300000.0) and lat.between?(289000.0,629000.0)
           # Dutch new rd system
           @params[:srid] = 28992
         end
-      else 
-        
+      else
+
       end
     end
-    
-    def findColSep(f)
+
+    def find_col_sep(f)
       a = f.gets
       b = f.gets
       [";","\t","|"].each do |s|
@@ -162,7 +162,7 @@ module CitySDK
       ','
     end
 
-    def isWkbGeometry(s)
+    def is_wkb_geometry?(s)
       begin
         f = GeoRuby::SimpleFeatures::GeometryFactory::new
         p = GeoRuby::SimpleFeatures::HexEWKBParser.new(f)
@@ -174,7 +174,7 @@ module CitySDK
       nil
     end
 
-    def isWktGeometry(s)
+    def is_wkt_geometry?(s)
       begin
         f = GeoRuby::SimpleFeatures::GeometryFactory::new
         p = GeoRuby::SimpleFeatures::EWKTParser.new(f)
@@ -187,7 +187,7 @@ module CitySDK
     end
 
     GEOMETRIES = ["point", "multipoint", "linestring", "multilinestring", "polygon", "multipolygon"]
-    def isGeoJSON(s)
+    def is_geo_json?(s)
       return nil if s.class != Hash
       begin
         if GEOMETRIES.include?(s[:type].downcase)
@@ -207,8 +207,8 @@ module CitySDK
       nil
     end
 
-    def geomFromText(coords)
-      # begin 
+    def geom_from_text(coords)
+      # begin
       #   a = factory.parse_wkt(coords)
       # rescue
       # end
@@ -219,14 +219,14 @@ module CitySDK
           coor = $2.gsub('(','[').gsub(')',']')
           coor = coor.gsub(/([-+]?[0-9]*\.?[0-9]+)\s+([-+]?[0-9]*\.?[0-9]+)/) { "[#{$1},#{$2}]" }
           coor = JSON.parse(coor)
-          return { :type => type, 
+          return { :type => type,
             :coordinates => coor }
         end
       end
       {}
     end
-    
-    def findGeometry(xfield=nil, yfield=nil)
+
+    def find_geometry(xfield=nil, yfield=nil)
       unless(xfield and yfield)
         @params[:hasgeometry] = nil
         xs = true
@@ -236,35 +236,35 @@ module CitySDK
           next if k.nil?
 
           if k.to_s =~ RE_GEO
-            
-            srid,g_type = isWkbGeometry(v)
+
+            srid,g_type = is_wkb_geometry?(v)
             if(srid)
               @params[:srid] = srid
               @params[:geomtry_type] = g_type
               @content.each do |h|
-                a,b,g = isWkbGeometry(h[:properties][:data][k])
+                a,b,g = is_wkb_geometry?(h[:properties][:data][k])
                 h[:geometry] = g
                 h[:properties][:data].delete(k)
               end
               @params[:hasgeometry] = k
               return true
             end
-            
-            
-            srid,g_type = isWktGeometry(v)
+
+
+            srid,g_type = is_wkt_geometry?(v)
             if(srid)
               @params[:srid] = srid
               @params[:geomtry_type] = g_type
               @content.each do |h|
-                a,b,g = isWktGeometry(h[:properties][:data][k])
+                a,b,g = is_wkt_geometry?(h[:properties][:data][k])
                 h[:geometry] = g
                 h[:properties][:data].delete(k)
               end
               @params[:hasgeometry] = k
               return true
             end
-            
-            srid,g_type = isGeoJSON(v)
+
+            srid,g_type = is_geo_json?(v)
             if(srid)
               @params[:srid] = srid
               @params[:geomtry_type] = g_type
@@ -275,9 +275,9 @@ module CitySDK
               @params[:hasgeometry] = k
               return true
             end
-            
+
           end
-          
+
           hdc = k.to_s.downcase
           if hdc == 'longitude' or hdc == 'lon' or hdc == 'x'
             xfield=k; xs=false
@@ -285,7 +285,7 @@ module CitySDK
           if hdc == 'latitude' or hdc == 'lat' or hdc == 'y'
             yfield=k; ys=false
           end
-          xfield = k if xs and (hdc =~ RE_X) 
+          xfield = k if xs and (hdc =~ RE_X)
           yfield = k if ys and (hdc =~ RE_Y)
         end
       end
@@ -305,19 +305,18 @@ module CitySDK
         # factory = ::RGeo::Cartesian.preferred_factory()
         @params[:hasgeometry] = "[#{xfield}]"
         @content.each do |h|
-          h[:geometry] = geomFromText(h[:properties][:data][xfield])
+          h[:geometry] = geom_from_text(h[:properties][:data][xfield])
           h[:properties][:data].delete(xfield) if h[:geometry]
         end
         @params[:geomtry_type] = ''
         @params[:fields].delete(xfield) if @params[:fields]
         return true
       end
-      
-      
+
       false
     end
-    
-    def readCsv(path)
+
+    def read_csv(path)
       @file = path
       c=''
       File.open(path, "r:bom|utf-8") do |fd|
@@ -330,12 +329,12 @@ module CitySDK
       c = c.force_encoding('utf-8')
       c = c.gsub(/\r\n?/, "\n")
       @content = []
-      @params[:colsep] = findColSep(StringIO.new(c)) unless @params[:colsep]
+      @params[:colsep] = find_col_sep(StringIO.new(c)) unless @params[:colsep]
       csv = CSV.new(c, :col_sep => @params[:colsep], :headers => true, :skip_blanks =>true)
       csv.header_convert { |h| h.blank? ? '_' : h.strip.gsub(/\s+/,'_')  }
       csv.convert { |h| h ? h.strip : '' }
       index = 0
-      begin 
+      begin
         csv.each do |row|
           r = row.to_hash
           h = {}
@@ -348,17 +347,17 @@ module CitySDK
       rescue => e
         raise CitySDK::Exception.new("Read CSV; line #{index}; #{e.message}")
       end
-      findGeometry
+      find_geometry
     end
 
-    def readJSON(path)
+    def read_json(path)
       @content = []
       @file = path
       raw = ''
       File.open(path, "r:bom|utf-8") do |fd|
         raw = fd.read
       end
-      hash = CitySDK::parseJson(raw)
+      hash = CitySDK::parse_json(raw)
 
       if hash.is_a?(Hash) and hash[:type] and (hash[:type] == 'FeatureCollection')
         # GeoJSON
@@ -382,44 +381,43 @@ module CitySDK
             end
           end
         end
-        
+
         if val
           val.each do |h|
             @content << { :properties => {:data => h} }
           end
         end
-        findGeometry
+        find_geometry
       end
     end
 
-    def sridFromPrj(str)
+    def srid_from_prj(str)
       begin
         connection = Faraday.new :url => "http://prj2epsg.org"
         resp = connection.get('/search.json', {:mode => 'wkt', :terms => str})
-        if resp.status.between?(200, 299) 
-          resp = CitySDK::parseJson resp.body
+        if resp.status.between?(200, 299)
+          resp = CitySDK::parse_json resp.body
           @params[:srid] = resp[:codes][0][:code].to_i
         end
       rescue
       end
     end
 
-    def readShape(path)
-      
+    def read_shapefile(path)
+
       @content = []
       @file = path
-      
+
       prj = path.gsub(/.shp$/i,"") + '.prj'
       prj = File.exists?(prj) ? File.read(prj) : nil
-      sridFromPrj(prj) if (prj and @params[:srid].nil?)
-      
+      srid_from_prj(prj) if (prj and @params[:srid].nil?)
+
       @params[:hasgeometry] = 'ESRI Shape'
-      
-      
+
       GeoRuby::Shp4r::ShpFile.open(path) do |shp|
         shp.each do |shape|
           h = {}
-          h[:geometry] = CitySDK::parseJson(shape.geometry.to_json) #a GeoRuby SimpleFeature
+          h[:geometry] = CitySDK::parse_json(shape.geometry.to_json) #a GeoRuby SimpleFeature
           h[:properties] = {:data => {}}
           att_data = shape.data #a Hash
           shp.fields.each do |field|
@@ -431,17 +429,17 @@ module CitySDK
         end
       end
     end
-    
-    def readCsdk(path)
+
+    def read_csdk(path)
       h = Marshal.load(File.read(path))
       @params = h[:config]
       @content = h[:content]
-    end    
-    
-    def readZip(path)
-      begin 
-        Dir.mktmpdir("cdkfi_#{File.basename(path).gsub(/\A/,'')}") do |dir| 
-          raise CitySDK::Exception.new("Error unzipping #{path}.", {:originalfile => path}, __FILE__,__LINE__) if not system "unzip '#{path}' -d '#{dir}' > /dev/null 2>&1"
+    end
+
+    def read_zip(path)
+      begin
+        Dir.mktmpdir("cdkfi_#{File.basename(path).gsub(/\A/,'')}") do |dir|
+          raise CitySDK::Exception.new("Error unzipping #{path}.", {:originalfile => path}, __FILE__, __LINE__) if not system "unzip '#{path}' -d '#{dir}' > /dev/null 2>&1"
           if File.directory?(dir + '/' + File.basename(path).chomp(File.extname(path)))
             dir = dir + '/' + File.basename(path).chomp(File.extname(path) )
           end
@@ -449,21 +447,21 @@ module CitySDK
             next if f =~ /^\./
             case File.extname(f)
               when /\.(geo)?json/i
-                readJSON(dir+'/'+f)
+                read_json(dir+'/'+f)
                 return
               when /\.shp/i
-                readShape(dir+'/'+f)
+                read_shapefile(dir+'/'+f)
                 return
               when /\.csv|tsv/i
-                readCsv(dir+'/'+f)
+                read_csv(dir+'/'+f)
                 return
             end
           end
         end
       rescue Exception => e
-        raise CitySDK::Exception.new(e.message, {:originalfile => path}, __FILE__,__LINE__)
+        raise CitySDK::Exception.new(e.message, {:originalfile => path}, __FILE__, __LINE__)
       end
-      raise CitySDK::Exception.new("Could not proecess file #{path}", {:originalfile => path}, __FILE__,__LINE__)
+      raise CitySDK::Exception.new("Could not proecess file #{path}", {:originalfile => path}, __FILE__, __LINE__)
     end
 
     def write(path=nil)
@@ -480,6 +478,6 @@ module CitySDK
     end
 
   end
-  
+
 end
 

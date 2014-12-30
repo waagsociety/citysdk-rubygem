@@ -21,12 +21,11 @@ end
 
 
 module CitySDK
-  
+
   # for debugging purposes...
   def jsonlog(o)
     puts JSON.pretty_generate({ o.class.to_s => o })
   end
-
 
   class Exception < ::Exception
     def initialize(message,parms=nil,srcfile=nil,srcline=nil)
@@ -41,11 +40,11 @@ module CitySDK
     end
   end
 
-  def self.parseJson(jsonstring)
+  def self.parse_json(str)
     begin
-      return jsonstring.blank? ? {} : JSON.parse(jsonstring,symbolize_names: true)
+      return str.blank? ? {} : JSON.parse(str, symbolize_names: true)
     rescue Exception => e
-      raise CitySDK::Exception.new("#{e.message}; input: #{jsonstring}")
+      raise CitySDK::Exception.new("#{e.message}; input: #{str}")
     end
   end
 
