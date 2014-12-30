@@ -4,7 +4,7 @@ The CitySDK gem encapulates the CitySDK LD API, and offers high-level file impor
 The CitySDK LD API is part of an open data distribution platform developed in the EU CitySDK program by [Waag Society](http://waag.org).
 Find the platform itself on [GitHub](https://github.com/waagsociety/citysdk-ld), background is [here](http://dev.citysdk.waag.org).
 
-In order to best get an overview of the way to use the gem to import files into the CitySDK LD API, have a look at the [`admr` importer]((https://github.com/waagsociety/citysdk-amsterdam/tree/master/importers/admr)) for the top-level administrative regions in the Netherlands. The data consists of three ESRI Shapefiles; the importer is well-commented, explaining most of the possibilities of the gem.
+In order to best get an overview of the way to use the gem to import files into the CitySDK LD API, have a look at the [`admr` importer](https://github.com/waagsociety/citysdk-amsterdam/tree/master/importers/admr) for the top-level administrative regions in the Netherlands. The data consists of three ESRI Shapefiles; the importer is well-commented, explaining most of the possibilities of the gem.
 
 ## Installation
 
