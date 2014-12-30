@@ -6,6 +6,8 @@ Find the platform itself on [GitHub](https://github.com/waagsociety/citysdk-ld),
 
 In order to best get an overview of the way to use the gem to import files into the CitySDK LD API, have a look at the [`admr` importer](https://github.com/waagsociety/citysdk-amsterdam/tree/master/importers/admr) for the top-level administrative regions in the Netherlands. The data consists of three ESRI Shapefiles; the importer is well-commented, explaining most of the possibilities of the gem.
 
+The `bin` directory contains a preliminary version of the CitySDK LD API CLI tool. __😁 Warning, unfinished 😁!__
+
 ## Installation
 
 To install it just install the gem:
