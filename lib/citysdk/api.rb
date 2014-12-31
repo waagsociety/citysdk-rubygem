@@ -49,6 +49,9 @@ module CitySDK
     end
 
     def set_host(host)
+      
+      host = "https://" + host if host.index('http').nil?
+      
       if host.index('https') == 0
         @connection = Faraday.new url: host, ssl: { verify: false }
       else

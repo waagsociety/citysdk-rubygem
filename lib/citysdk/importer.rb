@@ -112,7 +112,7 @@ module CitySDK
 
               yield(node[:properties]) if block_given?
 
-              @api.create_object(node)
+              @api.create_object(node) if node[:properties][:data] != nil
               count -= 1
             end
             @api.create_flush
