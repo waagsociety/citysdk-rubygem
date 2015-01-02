@@ -1,4 +1,5 @@
 require 'json'
+require 'i18n'
 
 class String
   def remove_non_ascii
@@ -20,7 +21,25 @@ class Object
 end
 
 
+
 module CitySDK
+  ::I18n.enforce_available_locales = false
+  
+  def self.cdk_id_from_name(layer, text)
+    # Normalize text:
+    #  downcase, strip,
+    #  normalize (é = e, ü = u),
+    #  remove ', ", `,
+    #  replace sequences of non-word characters by '.',
+    #  Remove leading and trailing '.'
+
+    n = text.to_s.downcase.strip
+      .gsub(/['"`]/, '')
+      .gsub(/\W+/, '.')
+      .gsub(/((\.$)|(^\.))/, '')
+    "#{layer}.#{::I18n.transliterate(n)}"
+  end
+  
 
   # for debugging purposes...
   def jsonlog(o)
