@@ -25,7 +25,7 @@ end
 module CitySDK
   ::I18n.enforce_available_locales = false
   
-  def self.cdk_id_from_name(layer, text)
+  def self.make_cdk_id(layer, text)
     # Normalize text:
     #  downcase, strip,
     #  normalize (é = e, ü = u),
