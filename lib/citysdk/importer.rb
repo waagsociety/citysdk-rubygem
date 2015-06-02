@@ -12,9 +12,9 @@ module CitySDK
       raise Exception.new("Missing :file_path in Importer parameters.") if @params[:file_path].nil?
 
       @api = CitySDK::API.new(@params[:host])
-      if @params[:name]
+      if @params[:login]
         raise Exception.new("Missing :password in Importer parameters.") if @params[:password].nil?
-        raise Exception.new("Failure to authenticate '#{@params[:name]}' with api.") if not @api.authenticate(@params[:name],@params[:password])
+        raise Exception.new("Failure to authenticate '#{@params[:login]}' with api.") if not @api.authenticate(@params[:login],@params[:password])
         @api.release
       end
 
@@ -43,7 +43,7 @@ module CitySDK
         sign_out if @signed_in
         @api.set_host(@params[:host])
         @api.set_layer(@params[:layer])
-        @api.authenticate(@params[:name],@params[:password])
+        @api.authenticate(@params[:login],@params[:password])
         @signed_in = true
       rescue => e
         @api.release
