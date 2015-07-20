@@ -478,29 +478,6 @@ def showUsers
   $outwin.refresh
 end
 
-
-
-def deleteUser(u)
-  return unless ($user and $user[:admin])
-  user = selectUser("user to delete")
-  return if user.nil?
-  if (u[:name] =~ /citysdk/i)
-    return sherror("User 'citysdk' cannot be deleted.")
-  end
-  if yesNo?("Are you sure; deleting user #{u[:name]}?",1)
-    apiCall('deleting user',"User #{u[:name]} is deleted.") do 
-      json = ''
-      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
-        json = $api.delete "/owners/#{u[:name]}"
-        $api.release
-        getUserList
-      end
-      json
-    end
-  end
-end
-
-
 def createUser
   if $user and $user[:admin]
     user = {}
@@ -521,7 +498,8 @@ def createUser
     return cancelled unless get_input("password",:password,user,10)
 
     user[:admin]   = isTrue?(user[:admin]) 
-    user[:domains] = user[:domains].split(",").map {|d| d.strip }.join(",")
+    user[:domains] = user[:domains].split(",").map {|d|  d.strip }.join(",")
+    user[:domains] = "{" + user[:domains] + "}"
     
     apiCall('add new user') do 
       json = ''
@@ -541,7 +519,7 @@ end
 
 
 def selectUser(prompt)
-  return $user unless $user[:admin]  
+  return nil unless $user[:admin]  
   n = get_input_from_list(prompt, $users.map {|u| u[:name]}, 1)
   l = $users.select { |i| (i[:name] == n) }
   if l.blank?
@@ -551,6 +529,25 @@ def selectUser(prompt)
   l[0]
 end
 
+def deleteUser()
+  return unless ($user and $user[:admin])
+  user = selectUser("user to delete")
+  return if user.nil?
+  if (user[:name] =~ /citysdk/i)
+    return sherror("User 'citysdk' cannot be deleted.")
+  end
+  if yesNo?("Are you sure; deleting user #{user[:name]}?",1)
+    apiCall('deleting user',"User #{user[:name]} is deleted.") do 
+      json = ''
+      if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
+        json = $api.delete "/owners/#{user[:name]}"
+        $api.release
+        getUserList
+      end
+      json
+    end
+  end
+end
 
 
 def editUser
