@@ -4,5 +4,5 @@ require_relative './citysdk/file_reader.rb'
 require_relative './citysdk/importer.rb'
 
 module CitySDK
-  VERSION = '1.0.7'
+  VERSION = '1.1.1'
 end

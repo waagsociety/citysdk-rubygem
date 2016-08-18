@@ -195,6 +195,7 @@ def createLayer
       json = ''
       if $api.authenticate($credentials_hash[:login],$credentials_hash[:password])
         begin
+          jsonlog(layer)
           json = $api.post "/layers", layer
           getLayersList
           $layer = $layers.select { |i| (i[:name] == layer[:name]) }[0]

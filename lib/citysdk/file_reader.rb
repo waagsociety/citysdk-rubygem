@@ -227,6 +227,7 @@ module CitySDK
     end
 
     def find_geometry(xfield=nil, yfield=nil)
+      delete_column = (@params[:keep_geom] != true)
       unless(xfield and yfield)
         @params[:hasgeometry] = nil
         xs = true
@@ -236,29 +237,27 @@ module CitySDK
           next if k.nil?
 
           if k.to_s =~ RE_GEO
-
             srid,g_type = is_wkb_geometry?(v)
             if(srid)
               @params[:srid] = srid
-              @params[:geomtry_type] = g_type
+              @params[:geometry_type] = g_type
               @content.each do |h|
                 a,b,g = is_wkb_geometry?(h[:properties][:data][k])
                 h[:geometry] = g
-                h[:properties][:data].delete(k)
+                h[:properties][:data].delete(k) if delete_column
               end
               @params[:hasgeometry] = k
               return true
             end
 
-
             srid,g_type = is_wkt_geometry?(v)
             if(srid)
               @params[:srid] = srid
-              @params[:geomtry_type] = g_type
+              @params[:geometry_type] = g_type
               @content.each do |h|
                 a,b,g = is_wkt_geometry?(h[:properties][:data][k])
                 h[:geometry] = g
-                h[:properties][:data].delete(k)
+                h[:properties][:data].delete(k) if delete_column
               end
               @params[:hasgeometry] = k
               return true
@@ -267,10 +266,10 @@ module CitySDK
             srid,g_type = is_geo_json?(v)
             if(srid)
               @params[:srid] = srid
-              @params[:geomtry_type] = g_type
+              @params[:geometry_type] = g_type
               @content.each do |h|
                 h[:geometry] = h[:properties][:data][k]
-                h[:properties].delete(k)
+                h[:properties].delete(k) if delete_column
               end
               @params[:hasgeometry] = k
               return true
@@ -294,25 +293,24 @@ module CitySDK
         @params[:hasgeometry] = [xfield,yfield].to_s
         @content.each do |h|
           h[:geometry] = {:type => 'Point', :coordinates => [h[:properties][:data][xfield].gsub(',','.').to_f, h[:properties][:data][yfield].gsub(',','.').to_f]}
-          h[:properties][:data].delete(yfield)
-          h[:properties][:data].delete(xfield)
+          h[:properties][:data].delete(yfield) if delete_column
+          h[:properties][:data].delete(xfield) if delete_column
         end
-        @params[:geomtry_type] = 'Point'
-        @params[:fields].delete(xfield) if @params[:fields]
-        @params[:fields].delete(yfield) if @params[:fields]
+        @params[:geometry_type] = 'Point'
+        @params[:fields].delete(xfield) if @params[:fields] and delete_column
+        @params[:fields].delete(yfield) if @params[:fields] and delete_column
         return true
       elsif (xfield and yfield)
         # factory = ::RGeo::Cartesian.preferred_factory()
         @params[:hasgeometry] = "[#{xfield}]"
         @content.each do |h|
           h[:geometry] = geom_from_text(h[:properties][:data][xfield])
-          h[:properties][:data].delete(xfield) if h[:geometry]
+          h[:properties][:data].delete(xfield) if h[:geometry] and delete_column
         end
-        @params[:geomtry_type] = ''
-        @params[:fields].delete(xfield) if @params[:fields]
+        @params[:geometry_type] = ''
+        @params[:fields].delete(xfield) if @params[:fields] and delete_column
         return true
       end
-
       false
     end
 
